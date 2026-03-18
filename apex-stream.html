@@ -1161,7 +1161,342 @@
 
     </div>
 
-    <script src="app.js"></script>
+    <script>
+        // ==========================================
+        // APEX-STREAM — Full Inline Application JS
+        // ==========================================
+        const API = 'https://ergast.com/api/f1';
+        let season = '2023', currentRound = '1', allResults = [], calendarLoaded = false;
+
+        // --- Tab Switching ---
+        function switchTab(name) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + name).classList.add('active');
+            document.querySelectorAll('.nav-tab').forEach((t, i) => {
+                const map = ['pipeline', 'explorer', 'schema', 'dashboard', 'logs'];
+                if (map[i] === name) t.classList.add('active');
+            });
+            if (name === 'explorer' && !calendarLoaded) loadCalendar();
+            if (name === 'schema' && !document.getElementById('schemaGrid').hasChildNodes()) renderSchema();
+            if (name === 'dashboard') loadDashboard();
+            if (name === 'logs' && !document.getElementById('logBody').hasChildNodes()) filterLogs();
+        }
+        function onSeasonChange() {
+            season = document.getElementById('seasonSel').value;
+            populateRaceSelect();
+            calendarLoaded = false;
+            document.getElementById('raceGrid').innerHTML = '';
+            document.getElementById('explorerSections').style.display = 'none';
+            const a = document.querySelector('.tab-content.active');
+            if (a.id === 'tab-explorer') loadCalendar();
+            if (a.id === 'tab-dashboard') loadDashboard();
+        }
+        async function ergast(p) { const r = await fetch(API + p); if (!r.ok) throw new Error('API ' + r.status); return r.json(); }
+
+        // ==========================================
+        // PIPELINE RUNNER
+        // ==========================================
+        const stages = [
+            { id: 'extract', name: 'EXTRACT', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
+            { id: 'validate', name: 'VALIDATE', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>' },
+            { id: 'transform', name: 'TRANSFORM', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>' },
+            { id: 'load', name: 'LOAD', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>' },
+            { id: 'notify', name: 'NOTIFY', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>' }
+        ];
+        function initStepper() {
+            document.getElementById('stepper').innerHTML = stages.map((s, i) =>
+                `<div class="step" id="step-${s.id}"><div class="step-icon">${s.svg}</div><div class="step-name">${s.name}</div><div class="step-time" id="time-${s.id}">—</div>${i < stages.length - 1 ? '<span class="step-arrow">→</span>' : ''}</div>`
+            ).join('');
+        }
+        function setStep(id, state, time) {
+            const el = document.getElementById('step-' + id);
+            el.className = 'step ' + state;
+            if (time) document.getElementById('time-' + id).textContent = time;
+        }
+        function setGlobalStatus(s) {
+            const el = document.getElementById('globalStatus');
+            el.className = 'status-badge ' + s;
+            el.textContent = s.toUpperCase();
+        }
+        function clearLog() { document.getElementById('logTerminal').innerHTML = ''; }
+        function appendLog(level, msg) {
+            const t = document.getElementById('logTerminal');
+            const now = new Date();
+            const ts = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+            const cls = level === 'WARNING' ? 'log-warn' : level === 'ERROR' ? 'log-err' : level === 'SUCCESS' ? 'log-success' : '';
+            t.innerHTML += `<div class="${cls}">[${ts}] ${level.padEnd(8)} ${msg}</div>`;
+            t.scrollTop = t.scrollHeight;
+        }
+        const pipelineLog = {
+            extract: [['INFO', 'Starting apex-stream pipeline v1.0.0'], ['INFO', 'Connecting to Ergast API...'], ['INFO', 'Fetched 20 driver results ✓'], ['INFO', 'Connecting to FastF1 session cache...'], ['WARNING', 'Cache miss. Fetching live data...'], ['INFO', 'Extracted 1,247 lap time records ✓'], ['INFO', 'Extracted 34 pit stop records ✓']],
+            validate: [['INFO', 'Running Great Expectations suite (12 checks)'], ['INFO', '✓ lap_time.milliseconds in [60000, 200000]'], ['INFO', '✓ result.position not null'], ['INFO', '✓ driver_code is 3-char string'], ['INFO', 'All 12 expectations passed ✓']],
+            transform: [['INFO', 'Normalising lap time formats...'], ['INFO', 'Computing gap_to_leader per lap...'], ['INFO', 'Flagging safety car laps (laps 12, 13)...']],
+            load: [['INFO', 'Upserting 20 rows → result table'], ['INFO', 'Upserting 1,247 rows → lap_time table'], ['INFO', 'Upserting 34 rows → pit_stop table'], ['INFO', '0 duplicate records detected ✓']],
+            notify: [['INFO', 'Sending Slack notification...'], ['SUCCESS', 'Pipeline completed ✓']]
+        };
+        async function runPipeline() {
+            const btn = document.getElementById('btnRunPipeline');
+            btn.disabled = true; setGlobalStatus('running');
+            stages.forEach(s => setStep(s.id, '', '—'));
+            clearLog();
+            const raceEl = document.getElementById('raceSelect');
+            const raceName = raceEl.options[raceEl.selectedIndex]?.text || 'Bahrain GP';
+            const stageByStage = document.getElementById('togStage').classList.contains('on');
+            const start = Date.now();
+            for (const stage of stages) {
+                setStep(stage.id, 'running');
+                const ss = Date.now();
+                const lines = pipelineLog[stage.id] || [];
+                for (const [lv, msg] of lines) {
+                    appendLog(lv, msg.replace('{RACE}', raceName));
+                    await new Promise(r => setTimeout(r, 250 + Math.random() * 200));
+                }
+                setStep(stage.id, 'success', ((Date.now() - ss) / 1000).toFixed(1) + 's');
+                if (stageByStage && stage.id !== 'notify') {
+                    appendLog('INFO', 'Waiting for user...');
+                    await new Promise(r => { window._nextStage = r; });
+                }
+            }
+            setGlobalStatus('success'); btn.disabled = false;
+            addHistoryRun(raceName, true, ((Date.now() - start) / 1000).toFixed(1));
+        }
+        function populateRaceSelect() {
+            const races = { '2024': ['Bahrain GP', 'Saudi Arabian GP', 'Australian GP', 'Japanese GP', 'Chinese GP', 'Miami GP', 'Emilia Romagna GP', 'Monaco GP', 'Canadian GP', 'Spanish GP'], '2023': ['Bahrain GP', 'Saudi Arabian GP', 'Australian GP', 'Azerbaijan GP', 'Miami GP', 'Monaco GP', 'Spanish GP', 'Canadian GP', 'Austrian GP', 'British GP'], '2022': ['Bahrain GP', 'Saudi Arabian GP', 'Australian GP', 'Emilia Romagna GP', 'Miami GP', 'Spanish GP', 'Monaco GP', 'Azerbaijan GP', 'Canadian GP', 'British GP'], '2021': ['Bahrain GP', 'Emilia Romagna GP', 'Portuguese GP', 'Spanish GP', 'Monaco GP', 'Azerbaijan GP', 'French GP', 'Styrian GP', 'Austrian GP', 'British GP'] };
+            const sel = document.getElementById('raceSelect'), bf1 = document.getElementById('bfStart'), bf2 = document.getElementById('bfEnd');
+            sel.innerHTML = ''; bf1.innerHTML = ''; bf2.innerHTML = '';
+            (races[season] || races['2023']).forEach((r, i) => {
+                const o = `<option value="${i + 1}">Round ${i + 1} – ${r}</option>`;
+                sel.innerHTML += o; bf1.innerHTML += o; bf2.innerHTML += o;
+            });
+        }
+        function toggleBackfill() { const t = document.getElementById('togBackfill'); t.classList.toggle('on'); document.getElementById('backfillPanel').style.display = t.classList.contains('on') ? 'block' : 'none'; }
+        const historyRuns = [
+            { id: 'run-0047', race: 'British GP', season: '2023', status: 'SUCCESS', dur: '9.8s', ts: '2023-07-09 18:12:44' },
+            { id: 'run-0046', race: 'Austrian GP', season: '2023', status: 'SUCCESS', dur: '11.2s', ts: '2023-07-02 18:05:31' },
+            { id: 'run-0045', race: 'Canadian GP', season: '2023', status: 'FAILED', dur: '4.1s', ts: '2023-06-18 18:01:12' },
+            { id: 'run-0044', race: 'Spanish GP', season: '2023', status: 'SUCCESS', dur: '10.5s', ts: '2023-06-04 18:08:55' },
+            { id: 'run-0043', race: 'Monaco GP', season: '2023', status: 'SUCCESS', dur: '8.7s', ts: '2023-05-28 18:03:22' }
+        ];
+        function renderHistory() {
+            document.getElementById('historyBody').innerHTML = historyRuns.map(r =>
+                `<tr><td>${r.id}</td><td>${r.race}</td><td>${r.season}</td><td><span class="badge ${r.status === 'SUCCESS' ? 'badge-success' : 'badge-fail'}">${r.status}</span></td><td>${r.dur}</td><td>${r.ts}</td></tr>`
+            ).join('');
+        }
+        function addHistoryRun(race, ok, dur) {
+            historyRuns.unshift({ id: 'run-' + String(historyRuns.length + 48).padStart(4, '0'), race, season, status: ok ? 'SUCCESS' : 'FAILED', dur: dur + 's', ts: new Date().toISOString().replace('T', ' ').substring(0, 19) });
+            if (historyRuns.length > 5) historyRuns.pop();
+            renderHistory();
+        }
+
+        // ==========================================
+        // DATA EXPLORER
+        // ==========================================
+        async function loadCalendar() {
+            const grid = document.getElementById('raceGrid'), load = document.getElementById('calendarLoading');
+            grid.innerHTML = ''; load.style.display = 'block';
+            try {
+                const data = await ergast(`/${season}.json`);
+                const races = data.MRData.RaceTable.Races;
+                load.style.display = 'none'; calendarLoaded = true;
+                races.forEach(r => {
+                    grid.innerHTML += `<div class="race-card"><span class="round-badge">R${r.round}</span><h4>${r.raceName}</h4><p>${r.Circuit.circuitName}</p><p>${r.Circuit.Location.country}</p><p style="color:var(--t1);margin-top:4px">${r.date}</p><button class="btn btn-outline" onclick="loadRaceData('${r.round}','${r.raceName.replace(/'/g, "\\'")}')">View Results</button></div>`;
+                });
+            } catch (e) { load.innerHTML = `<p style="color:var(--err)">Failed to load: ${e.message}. <button class="btn btn-outline" onclick="loadCalendar()">Retry</button></p>`; }
+        }
+        async function loadRaceData(round, name) {
+            currentRound = round;
+            document.getElementById('explorerSections').style.display = 'block';
+            document.getElementById('resultsInfo').textContent = `Loaded: Round ${round} – ${name}`;
+            document.getElementById('resultsUrl').textContent = `${API}/${season}/${round}/results.json`;
+            document.getElementById('pitsUrl').textContent = `${API}/${season}/${round}/pitstops.json`;
+            loadResults(round); loadStandings(); loadPitStops(round);
+            document.getElementById('explorerSections').scrollIntoView({ behavior: 'smooth' });
+        }
+        async function loadResults(round) {
+            const thead = document.getElementById('resultsThead'), tbody = document.getElementById('resultsTbody');
+            thead.innerHTML = '<tr><th>Pos</th><th>Driver</th><th>Constructor</th><th>Grid</th><th>Points</th><th>Status</th><th>Gap</th></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr>';
+            try {
+                const d = await ergast(`/${season}/${round}/results.json`);
+                allResults = d.MRData.RaceTable.Races[0]?.Results || [];
+                renderResults(allResults);
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="7" style="color:var(--err)">Error: ${e.message} <button class="btn btn-outline" onclick="loadResults('${round}')">Retry</button></td></tr>`; }
+        }
+        function renderResults(results) {
+            document.getElementById('resultsTbody').innerHTML = results.map((r, i) => {
+                const podium = i === 0 ? 'podium-1' : i === 1 ? 'podium-2' : i === 2 ? 'podium-3' : '';
+                const stCls = r.status === 'Finished' ? 'badge-success' : r.status.includes('+') ? 'badge-warn' : 'badge-fail';
+                return `<tr class="${podium}"><td>${r.position}</td><td>${r.Driver.givenName} ${r.Driver.familyName}</td><td>${r.Constructor.name}</td><td>${r.grid}</td><td>${r.points}</td><td><span class="badge ${stCls}">${r.status}</span></td><td>${r.Time ? r.Time.time : r.status}</td></tr>`;
+            }).join('');
+        }
+        function filterResults() {
+            const q = document.getElementById('resultsFilter').value.toLowerCase();
+            renderResults(allResults.filter(r => `${r.Driver.givenName} ${r.Driver.familyName} ${r.Constructor.name}`.toLowerCase().includes(q)));
+        }
+        async function loadStandings() {
+            const thead = document.getElementById('standingsThead'), tbody = document.getElementById('standingsTbody');
+            document.getElementById('standingsUrl').textContent = `${API}/${season}/driverStandings.json`;
+            thead.innerHTML = '<tr><th>Pos</th><th>Driver</th><th>Nationality</th><th>Team</th><th>Points</th><th>Wins</th><th>Progress</th></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="loading"><div class="spinner"></div></td></tr>';
+            try {
+                const d = await ergast(`/${season}/driverStandings.json`);
+                const list = d.MRData.StandingsTable.StandingsLists[0]?.DriverStandings || [];
+                const maxPts = list.length ? parseFloat(list[0].points) : 1;
+                tbody.innerHTML = list.map(s => {
+                    const pct = (parseFloat(s.points) / maxPts * 100).toFixed(0);
+                    return `<tr><td>${s.position}</td><td>${s.Driver.givenName} ${s.Driver.familyName}</td><td>${s.Driver.nationality}</td><td>${s.Constructors[0]?.name || ''}</td><td>${s.points}</td><td>${s.wins}</td><td><div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div></td></tr>`;
+                }).join('');
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="7" style="color:var(--err)">Error: ${e.message}</td></tr>`; }
+        }
+        async function loadPitStops(round) {
+            const thead = document.getElementById('pitsThead'), tbody = document.getElementById('pitsTbody');
+            thead.innerHTML = '<tr><th>Stop #</th><th>Driver</th><th>Lap</th><th>Duration</th></tr>';
+            tbody.innerHTML = '<tr><td colspan="4" class="loading"><div class="spinner"></div></td></tr>';
+            try {
+                const d = await ergast(`/${season}/${round}/pitstops.json`);
+                const stops = d.MRData.RaceTable.Races[0]?.PitStops || [];
+                stops.sort((a, b) => parseFloat(a.duration) - parseFloat(b.duration));
+                tbody.innerHTML = stops.map(s => {
+                    const dur = parseFloat(s.duration);
+                    const clr = dur < 25 ? 'color:var(--green)' : dur > 50 ? 'color:var(--err)' : '';
+                    return `<tr><td>${s.stop}</td><td>${s.driverId}</td><td>${s.lap}</td><td style="${clr}">${s.duration}s</td></tr>`;
+                }).join('');
+            } catch (e) { tbody.innerHTML = `<tr><td colspan="4" style="color:var(--err)">Error: ${e.message}</td></tr>`; }
+        }
+
+        // ==========================================
+        // SCHEMA VIEWER
+        // ==========================================
+        const schema = {
+            driver: { cols: [['driver_id', 'INT', 'PK', 'NN'], ['driver_ref', 'VARCHAR', '', 'NN'], ['number', 'INT', '', ''], ['code', 'VARCHAR(3)', '', 'NN'], ['given_name', 'VARCHAR', '', 'NN'], ['family_name', 'VARCHAR', '', 'NN'], ['dob', 'DATE', '', ''], ['nationality', 'VARCHAR', '', '']], rows: '~850', ddl: 'CREATE TABLE driver (\n  driver_id   SERIAL PRIMARY KEY,\n  driver_ref  VARCHAR(64) NOT NULL UNIQUE,\n  number      INTEGER,\n  code        VARCHAR(3) NOT NULL,\n  given_name  VARCHAR(128) NOT NULL,\n  family_name VARCHAR(128) NOT NULL,\n  dob         DATE,\n  nationality VARCHAR(64)\n);\nCREATE INDEX idx_driver_code ON driver(code);', sample: [['1', 'max_verstappen', '1', 'VER', 'Max', 'Verstappen', '1997-09-30', 'Dutch'], ['2', 'perez', '11', 'PER', 'Sergio', 'Perez', '1990-01-26', 'Mexican'], ['3', 'hamilton', '44', 'HAM', 'Lewis', 'Hamilton', '1985-01-07', 'British']] },
+            constructor: { cols: [['constructor_id', 'INT', 'PK', 'NN'], ['constructor_ref', 'VARCHAR', '', 'NN'], ['name', 'VARCHAR', '', 'NN'], ['nationality', 'VARCHAR', '', '']], rows: '~210', ddl: 'CREATE TABLE constructor (\n  constructor_id  SERIAL PRIMARY KEY,\n  constructor_ref VARCHAR(64) NOT NULL UNIQUE,\n  name            VARCHAR(128) NOT NULL,\n  nationality     VARCHAR(64)\n);', sample: [['1', 'red_bull', 'Red Bull', 'Austrian'], ['2', 'mercedes', 'Mercedes', 'German'], ['3', 'ferrari', 'Ferrari', 'Italian']] },
+            circuit: { cols: [['circuit_id', 'INT', 'PK', 'NN'], ['circuit_ref', 'VARCHAR', '', 'NN'], ['name', 'VARCHAR', '', 'NN'], ['location', 'VARCHAR', '', ''], ['country', 'VARCHAR', '', 'NN']], rows: '~77', ddl: 'CREATE TABLE circuit (\n  circuit_id  SERIAL PRIMARY KEY,\n  circuit_ref VARCHAR(64) NOT NULL UNIQUE,\n  name        VARCHAR(256) NOT NULL,\n  location    VARCHAR(128),\n  country     VARCHAR(64) NOT NULL\n);', sample: [['1', 'bahrain', 'Bahrain Intl Circuit', 'Sakhir', 'Bahrain'], ['2', 'jeddah', 'Jeddah Corniche', 'Jeddah', 'Saudi Arabia'], ['3', 'albert_park', 'Albert Park', 'Melbourne', 'Australia']] },
+            race: { cols: [['race_id', 'INT', 'PK', 'NN'], ['year', 'INT', '', 'NN'], ['round', 'INT', '', 'NN'], ['circuit_id', 'INT', 'FK', 'NN'], ['name', 'VARCHAR', '', 'NN'], ['date', 'DATE', '', 'NN']], rows: '~1100', ddl: 'CREATE TABLE race (\n  race_id    SERIAL PRIMARY KEY,\n  year       INTEGER NOT NULL,\n  round      INTEGER NOT NULL,\n  circuit_id INTEGER NOT NULL REFERENCES circuit(circuit_id),\n  name       VARCHAR(256) NOT NULL,\n  date       DATE NOT NULL\n);\nCREATE INDEX idx_race_year ON race(year);', sample: [['1', '2023', '1', '1', 'Bahrain GP', '2023-03-05'], ['2', '2023', '2', '2', 'Saudi Arabian GP', '2023-03-19'], ['3', '2023', '3', '3', 'Australian GP', '2023-04-02']] },
+            result: { cols: [['result_id', 'INT', 'PK', 'NN'], ['race_id', 'INT', 'FK', 'NN'], ['driver_id', 'INT', 'FK', 'NN'], ['constructor_id', 'INT', 'FK', 'NN'], ['grid', 'INT', '', 'NN'], ['position', 'INT', '', ''], ['points', 'FLOAT', '', 'NN'], ['laps', 'INT', '', 'NN'], ['status', 'VARCHAR', '', '']], rows: '~26000', ddl: 'CREATE TABLE result (\n  result_id      SERIAL PRIMARY KEY,\n  race_id        INTEGER NOT NULL REFERENCES race(race_id),\n  driver_id      INTEGER NOT NULL REFERENCES driver(driver_id),\n  constructor_id INTEGER NOT NULL REFERENCES constructor(constructor_id),\n  grid           INTEGER NOT NULL,\n  position       INTEGER,\n  points         FLOAT NOT NULL DEFAULT 0,\n  laps           INTEGER NOT NULL,\n  status         VARCHAR(64)\n);\nCREATE INDEX idx_result_race ON result(race_id);', sample: [['1', '1', '1', '1', '1', '1', '25', '57', 'Finished'], ['2', '1', '2', '1', '2', '2', '18', '57', 'Finished'], ['3', '1', '3', '2', '5', '3', '15', '57', 'Finished']] },
+            lap_time: { cols: [['race_id', 'INT', 'FK', 'NN'], ['driver_id', 'INT', 'FK', 'NN'], ['lap', 'INT', 'PK', 'NN'], ['position', 'INT', '', ''], ['time', 'VARCHAR', '', 'NN'], ['milliseconds', 'INT', '', '']], rows: '~540000', ddl: 'CREATE TABLE lap_time (\n  race_id      INTEGER NOT NULL REFERENCES race(race_id),\n  driver_id    INTEGER NOT NULL REFERENCES driver(driver_id),\n  lap          INTEGER NOT NULL,\n  position     INTEGER,\n  time         VARCHAR(16) NOT NULL,\n  milliseconds INTEGER,\n  PRIMARY KEY (race_id, driver_id, lap)\n);', sample: [['1', '1', '1', '1', '1:34.523', '94523'], ['1', '1', '2', '1', '1:33.812', '93812'], ['1', '2', '1', '2', '1:34.891', '94891']] },
+            pit_stop: { cols: [['race_id', 'INT', 'FK', 'NN'], ['driver_id', 'INT', 'FK', 'NN'], ['stop', 'INT', 'PK', 'NN'], ['lap', 'INT', '', 'NN'], ['time', 'TIME', '', ''], ['duration', 'VARCHAR', '', '']], rows: '~9800', ddl: 'CREATE TABLE pit_stop (\n  race_id   INTEGER NOT NULL REFERENCES race(race_id),\n  driver_id INTEGER NOT NULL REFERENCES driver(driver_id),\n  stop      INTEGER NOT NULL,\n  lap       INTEGER NOT NULL,\n  time      TIME,\n  duration  VARCHAR(16),\n  PRIMARY KEY (race_id, driver_id, stop)\n);', sample: [['1', '1', '1', '16', '17:42:31', '23.4'], ['1', '1', '2', '33', '18:12:05', '24.1'], ['1', '2', '1', '15', '17:41:55', '22.8']] }
+        };
+        function renderSchema() {
+            const grid = document.getElementById('schemaGrid'); grid.innerHTML = '';
+            for (const [tbl, info] of Object.entries(schema)) {
+                const cols = info.cols.map(c => {
+                    const badges = (c[2] === 'PK' ? '<span class="pk-badge">PK</span>' : c[2] === 'FK' ? '<span class="fk-badge">FK</span>' : '') + (c[3] === 'NN' ? ' <span class="nn-dot" title="NOT NULL"></span>' : '');
+                    return `<div class="db-col"><div class="db-col-left">${badges} ${c[0]}</div><span class="type-badge">${c[1]}</span></div>`;
+                }).join('');
+                const sH = info.cols.map(c => `<th>${c[0]}</th>`).join('');
+                const sR = info.sample.map(r => `<tr>${r.map(v => `<td>${v}</td>`).join('')}</tr>`).join('');
+                grid.innerHTML += `<div class="db-card"><div class="db-card-head"><span>${tbl}</span><span class="row-est">${info.rows}</span></div>${cols}<div style="padding:8px 16px;display:flex;gap:8px"><button class="btn btn-outline" style="flex:1;font-size:11px;padding:4px" onclick="this.parentElement.nextElementSibling.style.display=this.parentElement.nextElementSibling.style.display==='none'?'block':'none'">Sample Data</button><button class="btn btn-outline" style="flex:1;font-size:11px;padding:4px" onclick="this.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.nextElementSibling.nextElementSibling.style.display==='none'?'block':'none'">SQL DDL</button></div><div class="sample-panel"><table><thead><tr>${sH}</tr></thead><tbody>${sR}</tbody></table></div><div class="ddl-box">${info.ddl}</div></div>`;
+            }
+        }
+
+        // ==========================================
+        // DASHBOARD
+        // ==========================================
+        let dashLoaded = false;
+        async function loadDashboard() {
+            if (dashLoaded && document.getElementById('champTitle').textContent === season) return;
+            dashLoaded = true;
+            document.getElementById('champTitle').textContent = season;
+            try {
+                const [rD, sD, cD] = await Promise.all([ergast(`/${season}.json`), ergast(`/${season}/driverStandings.json`), ergast(`/${season}/constructorStandings.json`)]);
+                const races = rD.MRData.RaceTable.Races;
+                const drivers = sD.MRData.StandingsTable.StandingsLists[0]?.DriverStandings || [];
+                const consts = cD.MRData.StandingsTable.StandingsLists[0]?.ConstructorStandings || [];
+                // Stat cards
+                document.getElementById('statRow').innerHTML = `<div class="stat-card"><div class="stat-val">${races.length}</div><div class="stat-label">Races</div></div><div class="stat-card"><div class="stat-val">${drivers.length}</div><div class="stat-label">Drivers</div></div><div class="stat-card"><div class="stat-val">${consts.length}</div><div class="stat-label">Constructors</div></div><div class="stat-card"><div class="stat-val" style="font-size:18px">${drivers[0]?.Driver?.familyName || '—'}</div><div class="stat-label">Champion</div></div>`;
+                // Scatter dropdown
+                const dd = document.getElementById('scatterRound');
+                dd.innerHTML = races.slice(0, 10).map(r => `<option value="${r.round}">R${r.round}</option>`).join('');
+                // Championship bar chart (cleaner than 15 API calls)
+                if (Chart.getChart('chartChamp')) Chart.getChart('chartChamp').destroy();
+                const top10 = drivers.slice(0, 10);
+                new Chart(document.getElementById('chartChamp'), { type: 'bar', data: { labels: top10.map(d => d.Driver.familyName), datasets: [{ label: 'Points', data: top10.map(d => parseFloat(d.points)), backgroundColor: top10.map((_, i) => i === 0 ? '#FFD700' : '#E8002D'), borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1a1a1a' }, ticks: { color: '#aaa' } }, y: { grid: { color: '#1a1a1a' }, ticks: { color: '#888' } } } } });
+                // Constructor chart
+                if (Chart.getChart('chartConst')) Chart.getChart('chartConst').destroy();
+                new Chart(document.getElementById('chartConst'), { type: 'bar', data: { labels: consts.map(c => c.Constructor.name), datasets: [{ data: consts.map(c => parseFloat(c.points)), backgroundColor: consts.map((_, i) => i === 0 ? '#FFD700' : '#E8002D'), borderRadius: 4 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1a1a1a' }, ticks: { color: '#888' } }, y: { grid: { display: false }, ticks: { color: '#aaa' } } } } });
+                loadScatter();
+            } catch (e) { console.error('Dashboard error:', e); document.getElementById('statRow').innerHTML = `<div class="stat-card" style="grid-column:1/-1;color:var(--err)">Error loading dashboard: ${e.message} <button class="btn btn-outline" onclick="dashLoaded=false;loadDashboard()">Retry</button></div>`; }
+        }
+        async function loadScatter() {
+            const round = document.getElementById('scatterRound').value || '1';
+            document.getElementById('scatterTitle').textContent = 'Round ' + round;
+            if (Chart.getChart('chartScatter')) Chart.getChart('chartScatter').destroy();
+            try {
+                const d = await ergast(`/${season}/${round}/results.json`);
+                const results = d.MRData.RaceTable.Races[0]?.Results || [];
+                const pts = results.filter(r => r.position && r.grid !== '0').map(r => {
+                    const g = parseInt(r.grid), f = parseInt(r.position), diff = g - f;
+                    return { x: g, y: f, label: r.Driver.code || r.Driver.familyName.substring(0, 3).toUpperCase(), color: diff >= 3 ? '#00D26A' : diff <= -3 ? '#FF3B3B' : '#888' };
+                });
+                new Chart(document.getElementById('chartScatter'), { type: 'scatter', data: { datasets: [{ data: pts, backgroundColor: pts.map(p => p.color), pointRadius: 6 }, { data: Array.from({ length: 20 }, (_, i) => ({ x: i + 1, y: i + 1 })), borderColor: '#333', borderDash: [5, 5], showLine: true, pointRadius: 0, borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.raw.label ? `${ctx.raw.label}: Grid ${ctx.raw.x} → P${ctx.raw.y}` : '' } } }, scales: { x: { title: { display: true, text: 'Grid', color: '#888' }, grid: { color: '#1a1a1a' }, ticks: { color: '#888' }, min: 0, max: 21 }, y: { title: { display: true, text: 'Finish', color: '#888' }, grid: { color: '#1a1a1a' }, ticks: { color: '#888' }, min: 0, max: 21 } } } });
+            } catch (e) { console.error('Scatter error:', e); }
+        }
+
+        // ==========================================
+        // LOGS
+        // ==========================================
+        const logData = [
+            { ts: '2023-07-09 18:12:44', level: 'INFO', stage: 'extract', msg: 'Connecting to Ergast API...' },
+            { ts: '2023-07-09 18:12:45', level: 'INFO', stage: 'extract', msg: 'Fetched 20 driver results' },
+            { ts: '2023-07-09 18:12:46', level: 'WARNING', stage: 'extract', msg: 'FastF1 cache miss, fetching live data' },
+            { ts: '2023-07-09 18:12:48', level: 'INFO', stage: 'extract', msg: 'Extracted 1,380 lap time records' },
+            { ts: '2023-07-09 18:12:49', level: 'INFO', stage: 'validate', msg: 'Running Great Expectations suite' },
+            { ts: '2023-07-09 18:12:50', level: 'INFO', stage: 'validate', msg: 'All 12 expectations passed' },
+            { ts: '2023-07-09 18:12:51', level: 'INFO', stage: 'transform', msg: 'Normalising lap times to milliseconds' },
+            { ts: '2023-07-09 18:12:52', level: 'INFO', stage: 'load', msg: 'Upserting 1,380 rows to lap_time table' },
+            { ts: '2023-07-09 18:12:53', level: 'SUCCESS', stage: 'notify', msg: 'Pipeline completed in 9.8s' },
+            { ts: '2023-07-02 18:05:31', level: 'INFO', stage: 'extract', msg: 'Starting pipeline for Austrian GP' },
+            { ts: '2023-07-02 18:05:33', level: 'WARNING', stage: 'extract', msg: 'Rate limit approaching, slowing requests' },
+            { ts: '2023-07-02 18:05:35', level: 'INFO', stage: 'extract', msg: 'Extracted 1,190 lap time records' },
+            { ts: '2023-07-02 18:05:37', level: 'INFO', stage: 'validate', msg: 'All 12 expectations passed' },
+            { ts: '2023-07-02 18:05:40', level: 'INFO', stage: 'transform', msg: 'Computing gap to leader' },
+            { ts: '2023-07-02 18:05:42', level: 'INFO', stage: 'load', msg: 'Upserting results to race table' },
+            { ts: '2023-07-02 18:05:43', level: 'SUCCESS', stage: 'notify', msg: 'Pipeline completed in 11.2s' },
+            { ts: '2023-06-18 18:01:12', level: 'INFO', stage: 'extract', msg: 'Starting pipeline for Canadian GP' },
+            { ts: '2023-06-18 18:01:14', level: 'ERROR', stage: 'extract', msg: 'Ergast API timeout, retrying (1/3)' },
+            { ts: '2023-06-18 18:01:18', level: 'ERROR', stage: 'extract', msg: 'Ergast API timeout, retrying (2/3)' },
+            { ts: '2023-06-18 18:01:22', level: 'ERROR', stage: 'extract', msg: 'Max retries exceeded. Pipeline failed.' },
+            { ts: '2023-06-04 18:08:55', level: 'INFO', stage: 'extract', msg: 'Starting pipeline for Spanish GP' },
+            { ts: '2023-06-04 18:08:57', level: 'INFO', stage: 'extract', msg: 'Fetched 20 driver results' },
+            { ts: '2023-06-04 18:09:00', level: 'WARNING', stage: 'validate', msg: 'Nullable position found for DNF drivers' },
+            { ts: '2023-06-04 18:09:02', level: 'INFO', stage: 'transform', msg: 'Flagging 8 safety car laps' },
+            { ts: '2023-06-04 18:09:04', level: 'INFO', stage: 'load', msg: 'Load complete. 0 duplicates found' },
+            { ts: '2023-06-04 18:09:05', level: 'SUCCESS', stage: 'notify', msg: 'Pipeline completed in 10.5s' },
+            { ts: '2023-05-28 18:03:22', level: 'INFO', stage: 'extract', msg: 'Starting pipeline for Monaco GP' },
+            { ts: '2023-05-28 18:03:25', level: 'WARNING', stage: 'extract', msg: 'FastF1 returned partial telemetry data' },
+            { ts: '2023-05-28 18:03:28', level: 'INFO', stage: 'validate', msg: 'All 12 expectations passed' },
+            { ts: '2023-05-28 18:03:31', level: 'INFO', stage: 'load', msg: 'Upserting 980 rows to lap_time table' },
+            { ts: '2023-05-28 18:03:32', level: 'SUCCESS', stage: 'notify', msg: 'Pipeline completed in 8.7s' }
+        ];
+        function filterLogs() {
+            const level = document.getElementById('logLevelFilter').value;
+            const q = document.getElementById('logSearch').value.toLowerCase();
+            const filtered = logData.filter(l => (level === 'ALL' || l.level === level) && (l.msg.toLowerCase().includes(q) || l.stage.toLowerCase().includes(q)));
+            const counts = { INFO: 0, WARNING: 0, ERROR: 0, SUCCESS: 0 };
+            logData.forEach(l => counts[l.level] = (counts[l.level] || 0) + 1);
+            document.getElementById('logSummary').innerHTML = `<span>Total: <b>${logData.length}</b></span><span>Info: <b>${counts.INFO}</b></span><span>Warnings: <b>${counts.WARNING}</b></span><span>Errors: <b>${counts.ERROR}</b></span><span>Success: <b>${counts.SUCCESS}</b></span>`;
+            document.getElementById('logBody').innerHTML = filtered.map(l => {
+                const cls = l.level === 'SUCCESS' ? 'badge-success' : l.level === 'ERROR' ? 'badge-fail' : l.level === 'WARNING' ? 'badge-warn' : 'badge-info';
+                return `<tr><td style="white-space:nowrap">${l.ts}</td><td><span class="badge ${cls}">${l.level}</span></td><td>${l.stage}</td><td>${l.msg}</td></tr>`;
+            }).join('');
+        }
+        function exportLogs() {
+            const level = document.getElementById('logLevelFilter').value;
+            const q = document.getElementById('logSearch').value.toLowerCase();
+            const filtered = logData.filter(l => (level === 'ALL' || l.level === level) && l.msg.toLowerCase().includes(q));
+            const text = filtered.map(l => `[${l.ts}] ${l.level.padEnd(8)} [${l.stage}] ${l.msg}`).join('\n');
+            const blob = new Blob([text], { type: 'text/plain' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'apex-stream-logs.txt'; a.click();
+        }
+
+        // ==========================================
+        // INIT
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            initStepper(); populateRaceSelect(); renderHistory();
+        });
+    </script>
 </body>
 
 </html>
