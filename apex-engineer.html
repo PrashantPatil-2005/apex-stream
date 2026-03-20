@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APEX-ENGINEER | AI Race Engineer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080808;--surface:#111;--card:#161616;--border:#242424;--red:#E8002D;--gold:#FFD700;--green:#00D26A;--amber:#FF8C00;--err:#FF3B3B;--info:#3B8BFF;--t1:#F5F5F5;--t2:#777;--muted:#444}
+body{background:var(--bg);color:var(--t1);font-family:'Inter',sans-serif;min-height:100vh}
+h1,h2,h3,h4,.heading{font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.5px}
+.navbar{position:fixed;top:0;left:0;right:0;height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;z-index:100;gap:16px}
+.logo{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:700}.logo .a{color:var(--red)}.logo .pex{color:#fff}
+.tagline{font-size:11px;color:var(--muted);margin-left:8px}
+.module-pills{display:flex;gap:4px;margin:0 auto}
+.pill{padding:6px 18px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;color:var(--t2);cursor:pointer;border:1px solid var(--border);border-radius:4px;transition:.2s;text-transform:uppercase;text-decoration:none}
+.pill:hover{color:var(--t1);border-color:#555}.pill.active{background:var(--red);color:#fff;border-color:var(--red)}
+.nav-right{display:flex;align-items:center;gap:14px}
+.nav-right select{background:var(--bg);color:var(--t1);border:1px solid var(--border);padding:5px 10px;border-radius:4px;font-size:12px;font-family:'Inter',sans-serif}
+.repo-badge{font-size:10px;color:var(--muted);background:var(--card);padding:4px 10px;border-radius:4px;border:1px solid var(--border);white-space:nowrap}
+.sidebar{position:fixed;top:56px;left:0;width:220px;bottom:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding-top:16px;z-index:90}
+.sidebar-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;padding:0 20px;margin-bottom:12px}
+.sidebar-item{padding:10px 20px;font-size:14px;color:var(--t2);cursor:pointer;border-left:3px solid transparent;transition:.2s}
+.sidebar-item:hover{color:var(--t1);background:rgba(255,255,255,.02)}
+.sidebar-item.active{color:var(--t1);border-left-color:var(--red);background:rgba(232,0,45,.05)}
+.sidebar-stats{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);font-size:11px}
+.stat-line{display:flex;justify-content:space-between;margin-bottom:6px;color:var(--t2)}.stat-line span:last-child{color:var(--t1);font-weight:500}
+.main{margin-left:220px;padding:80px 24px 24px}
+.section{display:none;animation:fadeIn .3s}.section.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px}
+.card-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+.btn{padding:8px 20px;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:.2s}
+.btn-primary{background:var(--red);color:#fff}.btn-primary:hover{background:#b80024}
+.btn-outline{background:0;border:1px solid var(--border);color:var(--t1)}.btn-outline:hover{border-color:#555}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:5px 12px;font-size:11px}
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600}
+.badge-gold{background:rgba(255,215,0,.15);color:var(--gold)}
+.badge-green{background:rgba(0,210,106,.15);color:var(--green)}
+.badge-red{background:rgba(255,59,59,.15);color:var(--err)}
+.badge-amber{background:rgba(255,140,0,.15);color:var(--amber)}
+.badge-blue{background:rgba(59,139,255,.15);color:var(--info)}
+.badge-muted{background:rgba(255,255,255,.06);color:var(--t2)}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#0d0d0d;padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;color:var(--t2);letter-spacing:.5px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid #1a1a1a}tr:last-child td{border:0}tr:hover td{background:rgba(255,255,255,.015)}
+.spinner{border:3px solid #222;border-top-color:var(--red);border-radius:50%;width:28px;height:28px;animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Chat */
+.chat-layout{display:grid;grid-template-columns:1fr 380px;gap:20px;height:calc(100vh - 120px)}
+.chat-panel{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.chat-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.chat-header h3{font-size:16px}
+.chat-msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:80%;padding:12px 16px;border-radius:12px;font-size:13px;line-height:1.6;animation:fadeIn .3s}
+.msg-user{align-self:flex-end;background:var(--red);color:#fff;border-bottom-right-radius:4px}
+.msg-ai{align-self:flex-start;background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px}
+.msg-tool{align-self:center;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.2);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--amber);width:90%;padding:10px 14px}
+.msg-tool .tool-name{color:var(--gold);font-weight:600;margin-bottom:4px}
+.chat-input-row{padding:12px;border-top:1px solid var(--border);display:flex;gap:8px}
+.chat-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 14px;color:var(--t1);font-family:'Inter',sans-serif;font-size:13px;resize:none;height:44px}
+.chat-input:focus{outline:none;border-color:var(--red)}
+.typing{display:flex;gap:4px;padding:8px 16px;align-self:flex-start}.typing span{width:6px;height:6px;background:var(--t2);border-radius:50%;animation:typeBounce 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+@keyframes typeBounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+.quick-actions{display:flex;gap:6px;padding:0 12px 12px;flex-wrap:wrap}
+.quick-btn{padding:5px 12px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:16px;color:var(--t2);cursor:pointer;transition:.2s;font-family:'Inter',sans-serif}
+.quick-btn:hover{color:var(--t1);border-color:var(--red)}
+.api-key-row{padding:8px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center}
+.api-key-input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;color:var(--t1);font-size:11px;font-family:'JetBrains Mono',monospace}
+.api-key-input:focus{outline:none;border-color:var(--red)}
+/* Context panel */
+.context-panel{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.ctx-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px}
+.ctx-card h4{font-size:12px;color:var(--red);margin-bottom:8px;font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.5px}
+.ctx-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;color:var(--t2)}.ctx-row span:last-child{color:var(--t1);font-weight:500}
+.ctx-highlight{background:var(--surface);border-radius:4px;padding:8px 10px;margin-top:8px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--t2);line-height:1.6}
+/* MCP Tools */
+.tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.tool-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;transition:.2s}
+.tool-card:hover{border-color:#444}
+.tool-card h4{font-size:14px;color:var(--t1);margin-bottom:6px;font-family:'JetBrains Mono',monospace}
+.tool-card p{font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5}
+.tool-schema{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t2);margin-bottom:10px;max-height:120px;overflow:auto;white-space:pre;line-height:1.5}
+.tool-output{background:#0a0a0a;border:1px solid #333;border-radius:4px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#0f0;display:none;margin-top:8px;max-height:150px;overflow:auto;white-space:pre;line-height:1.5}
+.arch-flow{display:flex;align-items:center;justify-content:center;gap:0;margin:24px 0;flex-wrap:wrap}
+.arch-box{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 28px;text-align:center}
+.arch-box h4{font-size:13px;color:var(--t1);margin-bottom:4px}.arch-box p{font-size:11px;color:var(--t2)}
+.arch-arrow{font-size:24px;color:var(--red);margin:0 8px;font-weight:700}
+/* Strategy */
+.stint-timeline{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px}
+.stint-row{display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px}
+.stint-label{width:100px;color:var(--t2);font-weight:500;text-align:right;white-space:nowrap}
+.stint-bar{flex:1;height:22px;background:var(--bg);border-radius:4px;display:flex;overflow:hidden;position:relative}
+.stint-seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#000;position:relative}
+.stint-seg.soft{background:#E8002D}.stint-seg.medium{background:#FFD700}.stint-seg.hard{background:#fff}
+.stint-pit{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--t1);z-index:1}
+.strat-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+.strat-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;position:relative}
+.strat-card h4{font-size:14px;margin-bottom:4px}.strat-card .strat-type{font-size:11px;color:var(--t2);margin-bottom:10px}
+.strat-meta{display:flex;justify-content:space-between;margin-bottom:8px;font-size:12px}
+.strat-pros{font-size:11px;line-height:1.6;color:var(--t2);margin-bottom:12px}
+/* Simulator */
+.sim-layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.sim-control{display:flex;align-items:center;gap:12px;margin-bottom:16px;font-size:13px;color:var(--t2)}
+.sim-control label{min-width:140px;font-weight:500}
+.sim-control input[type=range]{flex:1;accent-color:var(--red)}
+.sim-control .sim-val{min-width:40px;text-align:center;font-family:'JetBrains Mono',monospace;color:var(--t1)}
+.toggle{width:40px;height:22px;background:#333;border-radius:11px;position:relative;cursor:pointer;transition:.2s;flex-shrink:0}
+.toggle.on{background:var(--red)}.toggle::after{content:'';width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:.2s}.toggle.on::after{left:20px}
+.sim-output{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px}
+.sim-output h4{font-size:14px;margin-bottom:12px}
+.sim-result{background:var(--surface);border-left:3px solid var(--red);padding:14px;border-radius:0 6px 6px 0;margin-bottom:12px;font-size:13px;line-height:1.7;color:var(--t2)}
+.sim-action{background:rgba(0,210,106,.06);border:1px solid rgba(0,210,106,.2);border-radius:6px;padding:14px;font-size:13px;color:var(--green);margin-bottom:12px}
+@media(max-width:1100px){.chat-layout{grid-template-columns:1fr}.context-panel{display:none}.tool-grid,.strat-cards{grid-template-columns:1fr}.sim-layout{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="logo"><span class="a">A</span><span class="pex">PEX</span></div>
+    <span class="tagline">F1 Intelligence Platform</span>
+    <div class="module-pills">
+        <a class="pill" href="apex-stream.html">STREAM</a>
+        <a class="pill" href="apex-predict.html">PREDICT</a>
+        <span class="pill active">ENGINEER</span>
+    </div>
+    <div class="nav-right">
+        <select id="seasonSel"><option value="2024">2024</option><option value="2023" selected>2023</option><option value="2022">2022</option><option value="2021">2021</option></select>
+        <span class="repo-badge">apex · monorepo · 3 modules</span>
+    </div>
+</nav>
+
+<aside class="sidebar">
+    <div class="sidebar-title">ENGINEER</div>
+    <div class="sidebar-item active" onclick="switchSection('chat')">Race Engineer Chat</div>
+    <div class="sidebar-item" onclick="switchSection('tools')">MCP Tools</div>
+    <div class="sidebar-item" onclick="switchSection('strategy')">Strategy Board</div>
+    <div class="sidebar-item" onclick="switchSection('simulator')">Scenario Simulator</div>
+    <div class="sidebar-stats">
+        <div class="sidebar-title" style="padding:0;margin-bottom:8px">Warehouse</div>
+        <div class="stat-line"><span>Races loaded</span><span id="wRaces">312</span></div>
+        <div class="stat-line"><span>Drivers</span><span>847</span></div>
+        <div class="stat-line"><span>Lap records</span><span>4.2M</span></div>
+        <div class="stat-line"><span>Last sync</span><span id="wSync">2 mins ago</span></div>
+        <div class="stat-line"><span>DB size</span><span>2.4 GB</span></div>
+    </div>
+</aside>
+
+<div class="main">
+
+<!-- ====== SECTION: CHAT ====== -->
+<div class="section active" id="sec-chat">
+<div class="chat-layout">
+    <div class="chat-panel">
+        <div class="chat-header">
+            <h3>🏎️ RACE ENGINEER</h3>
+            <span class="badge badge-green">CONNECTED</span>
+        </div>
+        <div class="chat-msgs" id="chatMsgs"></div>
+        <div class="quick-actions">
+            <button class="quick-btn" onclick="sendQuick('What is the optimal pit window for Hamilton right now?')">🔧 Request Pit Window</button>
+            <button class="quick-btn" onclick="sendQuick('Analyze the strategies of rival drivers around us.')">📊 Check Rivals</button>
+            <button class="quick-btn" onclick="sendQuick('What is the weather forecast for the remaining laps?')">🌤️ Weather Update</button>
+            <button class="quick-btn" onclick="sendQuick('Compare tyre degradation for available compounds.')">🛞 Tyre Compare</button>
+        </div>
+        <div class="chat-input-row">
+            <textarea class="chat-input" id="chatInput" placeholder="Ask your race engineer..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+            <button class="btn btn-primary" onclick="sendChat()">Send</button>
+        </div>
+        <div class="api-key-row">
+            <span style="font-size:10px;color:var(--muted)">API Key:</span>
+            <input class="api-key-input" id="apiKey" type="password" placeholder="sk-ant-... (Anthropic API key for live chat)">
+            <button class="btn btn-outline btn-sm" onclick="testApiKey()">Test</button>
+        </div>
+    </div>
+    <div class="context-panel">
+        <div class="ctx-card">
+            <h4>🏁 Race Status</h4>
+            <div class="ctx-row"><span>Race</span><span>Monaco GP 2024</span></div>
+            <div class="ctx-row"><span>Lap</span><span>34 / 78</span></div>
+            <div class="ctx-row"><span>Our Driver</span><span>Lewis Hamilton (#44)</span></div>
+            <div class="ctx-row"><span>Position</span><span style="color:var(--amber)">P4</span></div>
+            <div class="ctx-row"><span>Gap Ahead</span><span>4.2s</span></div>
+            <div class="ctx-row"><span>Gap Behind</span><span>8.7s</span></div>
+        </div>
+        <div class="ctx-card">
+            <h4>🛞 Tyre Status</h4>
+            <div class="ctx-row"><span>Compound</span><span><span class="badge badge-amber">MEDIUM</span></span></div>
+            <div class="ctx-row"><span>Lap Age</span><span>18 laps</span></div>
+            <div class="ctx-row"><span>Life Remaining</span><span>67%</span></div>
+            <div class="ctx-row"><span>Degradation</span><span>0.8%/lap</span></div>
+            <div class="ctx-row"><span>Rec. Window</span><span style="color:var(--err)">Lap 28-32 (PASSED)</span></div>
+        </div>
+        <div class="ctx-card">
+            <h4>🌤️ Weather</h4>
+            <div class="ctx-row"><span>Track Temp</span><span>38°C</span></div>
+            <div class="ctx-row"><span>Air Temp</span><span>24°C</span></div>
+            <div class="ctx-row"><span>Conditions</span><span style="color:var(--green)">Dry</span></div>
+            <div class="ctx-row"><span>Rain Prob</span><span>12% (Lap 45+)</span></div>
+        </div>
+        <div class="ctx-card">
+            <h4>🔧 Pit Data</h4>
+            <div class="ctx-row"><span>Last Stop</span><span>Lap 15 (2.4s)</span></div>
+            <div class="ctx-row"><span>Team Avg</span><span>2.6s</span></div>
+            <div class="ctx-highlight">STRATEGY OPTIONS:
+A: Stay out → Lap 40 (Hard)
+B: Pit now  → Lap 35 (Hard)
+C: Undercut → Lap 36 (Soft)</div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- ====== SECTION: MCP TOOLS ====== -->
+<div class="section" id="sec-tools">
+<h2 style="font-size:20px;margin-bottom:20px">MCP TOOL REGISTRY</h2>
+<div class="tool-grid" id="toolGrid"></div>
+<div class="card" style="margin-top:24px">
+    <div class="card-title">MCP Architecture</div>
+    <div class="arch-flow">
+        <div class="arch-box"><h4>Claude LLM</h4><p>claude-sonnet-4-20250514</p></div>
+        <span class="arch-arrow">←→</span>
+        <div class="arch-box" style="border-color:var(--red)"><h4>MCP Server</h4><p>Tool Router + Context</p></div>
+        <span class="arch-arrow">←→</span>
+        <div class="arch-box"><h4>F1 Data Tools</h4><p>8 registered tools</p></div>
+    </div>
+</div>
+</div>
+
+<!-- ====== SECTION: STRATEGY ====== -->
+<div class="section" id="sec-strategy">
+<h2 style="font-size:20px;margin-bottom:20px">STRATEGY BOARD — MONACO GP 2024</h2>
+<div class="stint-timeline">
+    <div class="card-title">Stint Timeline</div>
+    <div id="stintTimeline"></div>
+</div>
+<div class="card">
+    <div class="card-title">Strategy Comparison</div>
+    <div class="tbl-wrap"><table>
+        <thead><tr><th>Driver</th><th>Stop 1</th><th>Stop 2</th><th>Compounds</th><th>Total Pit</th><th>Pred. Finish</th></tr></thead>
+        <tbody id="stratBody"></tbody>
+    </table></div>
+</div>
+<div class="strat-cards" id="stratCards"></div>
+</div>
+
+<!-- ====== SECTION: SIMULATOR ====== -->
+<div class="section" id="sec-simulator">
+<h2 style="font-size:20px;margin-bottom:20px">SCENARIO SIMULATOR</h2>
+<div class="sim-layout">
+    <div class="card">
+        <div class="card-title">Simulation Controls</div>
+        <div class="sim-control"><label>Current Lap</label><input type="range" id="simLap" min="1" max="78" value="34" oninput="document.getElementById('simLapVal').textContent=this.value"><span class="sim-val" id="simLapVal">34</span></div>
+        <div class="sim-control"><label>Safety Car</label><div class="toggle" id="simSC" onclick="this.classList.toggle('on')"></div></div>
+        <div class="sim-control"><label>Rain Start Lap</label><input type="range" id="simRain" min="35" max="78" value="50" oninput="document.getElementById('simRainVal').textContent='Lap '+this.value"><span class="sim-val" id="simRainVal">Lap 50</span></div>
+        <div class="sim-control"><label>Rival Pits</label><div class="toggle" id="simRivalPit" onclick="this.classList.toggle('on')"></div></div>
+        <div class="sim-control"><label>Deg. Multiplier</label><input type="range" id="simDeg" min="5" max="20" value="10" step="1" oninput="document.getElementById('simDegVal').textContent=(this.value/10).toFixed(1)+'x'"><span class="sim-val" id="simDegVal">1.0x</span></div>
+        <button class="btn btn-primary" style="width:100%;margin-top:16px" onclick="runSimulation()">▶ RUN SCENARIO</button>
+    </div>
+    <div id="simOutput" class="sim-output">
+        <div class="card-title">Simulation Output</div>
+        <div id="simResults"></div>
+    </div>
+</div>
+</div>
+
+</div><!-- end main -->
+
+<script src="engineer.js"></script>
+</body>
+</html>
